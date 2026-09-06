@@ -264,6 +264,7 @@ const DEFAULT = {
              meals:['Завтрак','Обед','Ужин','Перекус'] },
   days:{}, custom:[], dishes:[], recent:[], freq:{}, templates:[], edits:{}, hidden:[]
 };
+let FRESH = false; try{ FRESH = !localStorage.getItem(KEY); }catch(e){}
 let state = load();
 
 function load(){
@@ -296,17 +297,17 @@ function cloudBackup(cb){
     if(++done===parts.length && cb) cb(!fail);
   }));
 }
-function cloudRestore(){
-  if(!(tg && tg.CloudStorage)) { toast('Облако Telegram недоступно'); return; }
+function cloudRestore(silent){
+  if(!(tg && tg.CloudStorage)) { if(!silent) toast('Облако Telegram недоступно'); return; }
   tg.CloudStorage.getItem('bk_meta',(e,v)=>{
     const n = parseInt(v||'0',10);
-    if(!n){ toast('Копии в облаке нет'); return; }
+    if(!n){ if(!silent) toast('Копии в облаке нет'); return; }
     const keys = []; for(let i=0;i<n;i++) keys.push('bk_'+i);
     tg.CloudStorage.getItems(keys,(er,obj)=>{
-      if(er||!obj){ toast('Не удалось прочитать копию'); return; }
+      if(er||!obj){ if(!silent) toast('Не удалось прочитать копию'); return; }
       let s=''; for(let i=0;i<n;i++) s += (obj['bk_'+i]||'');
       try{ state = JSON.parse(s); save(); applyTheme(); render(); toast('Данные восстановлены'); }
-      catch(x){ toast('Копия повреждена'); }
+      catch(x){ if(!silent) toast('Копия повреждена'); }
     });
   });
 }
@@ -1252,7 +1253,7 @@ function bindSet(){
   const uh = document.getElementById('unhide');
   if(uh) uh.onclick = ()=>{ state.hidden = []; save(); toast('Продукты вернулись в базу'); render(); };
   document.getElementById('bkCloud').onclick = ()=>cloudBackup(ok=>toast(ok?'Копия сохранена в Telegram':'Облако недоступно'));
-  document.getElementById('rsCloud').onclick = cloudRestore;
+  document.getElementById('rsCloud').onclick = ()=>cloudRestore();
   document.getElementById('expFile').onclick = ()=>{
     const blob = new Blob([JSON.stringify(state)], {type:'application/json'});
     const a = document.createElement('a');
@@ -1293,6 +1294,9 @@ document.getElementById('swrap').onclick = e=>{ if(e.target.id==='swrap') closeS
 
 applyTheme();
 render();
+
+/* первый запуск на новом телефоне: молча поднимаем копию из облака телеграма */
+if(FRESH && tg && tg.CloudStorage) cloudRestore(true);
 </script>
 </body>
 </html>
