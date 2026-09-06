@@ -254,6 +254,7 @@ const BUILTIN_DB = [{"n": "Огурец", "k": 15, "p": 0.8, "f": 0.1, "c": 2.8,
 /* ---------- Telegram ---------- */
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { try { tg.ready(); tg.expand(); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch(e){} }
+const CLOUD = !!(tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9'));
 function haptic(t){ try{ tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(t||'light'); }catch(e){} }
 
 /* ---------- Хранилище ---------- */
@@ -286,7 +287,8 @@ function save(){
 
 /* резервная копия в облако Telegram (значение ключа ограничено, поэтому режем на части) */
 function cloudBackup(cb){
-  if(!(tg && tg.CloudStorage)) { cb && cb(false); return; }
+  if(!CLOUD) { cb && cb(false); return; }
+  try{
   const s = JSON.stringify(state), parts = [];
   for(let i=0;i<s.length;i+=3000) parts.push(s.slice(i,i+3000));
   if(parts.length>200){ cb && cb(false); return; }
@@ -296,9 +298,11 @@ function cloudBackup(cb){
     if(err) fail = true;
     if(++done===parts.length && cb) cb(!fail);
   }));
+  }catch(e){ cb && cb(false); }
 }
 function cloudRestore(silent){
-  if(!(tg && tg.CloudStorage)) { if(!silent) toast('Облако Telegram недоступно'); return; }
+  if(!CLOUD) { if(!silent) toast('Облако Telegram недоступно'); return; }
+  try{
   tg.CloudStorage.getItem('bk_meta',(e,v)=>{
     const n = parseInt(v||'0',10);
     if(!n){ if(!silent) toast('Копии в облаке нет'); return; }
@@ -310,6 +314,7 @@ function cloudRestore(silent){
       catch(x){ if(!silent) toast('Копия повреждена'); }
     });
   });
+  }catch(e){ if(!silent) toast('Облако недоступно'); }
 }
 
 /* ---------- База продуктов ---------- */
@@ -1206,10 +1211,10 @@ function viewSet(){
   <div class="card">
     <div class="mname" style="margin-bottom:4px">Копия данных</div>
     <div class="dsub" style="margin-bottom:10px">Записи хранятся в памяти приложения. Раз в неделю делай копию — тогда ничего не потеряется.</div>
-    <div class="row2" style="margin-bottom:10px">
+    ${CLOUD ? `<div class="row2" style="margin-bottom:10px">
       <button class="btn ghost sm" id="bkCloud">Копия в Telegram</button>
       <button class="btn ghost sm" id="rsCloud">Восстановить</button>
-    </div>
+    </div>` : `<div class="dsub" style="margin-bottom:10px">Копия в облако телеграма появится, если открыть приложение через бота, а не в браузере.</div>`}
     <div class="row2">
       <button class="btn ghost sm" id="expFile">Скачать файлом</button>
       <button class="btn ghost sm" id="impFile">Загрузить файл</button>
@@ -1252,8 +1257,10 @@ function bindSet(){
   });
   const uh = document.getElementById('unhide');
   if(uh) uh.onclick = ()=>{ state.hidden = []; save(); toast('Продукты вернулись в базу'); render(); };
-  document.getElementById('bkCloud').onclick = ()=>cloudBackup(ok=>toast(ok?'Копия сохранена в Telegram':'Облако недоступно'));
-  document.getElementById('rsCloud').onclick = ()=>cloudRestore();
+  if(CLOUD){
+    document.getElementById('bkCloud').onclick = ()=>cloudBackup(ok=>toast(ok?'Копия сохранена в Telegram':'Облако недоступно'));
+    document.getElementById('rsCloud').onclick = ()=>cloudRestore();
+  }
   document.getElementById('expFile').onclick = ()=>{
     const blob = new Blob([JSON.stringify(state)], {type:'application/json'});
     const a = document.createElement('a');
@@ -1296,7 +1303,7 @@ applyTheme();
 render();
 
 /* первый запуск на новом телефоне: молча поднимаем копию из облака телеграма */
-if(FRESH && tg && tg.CloudStorage) cloudRestore(true);
+if(FRESH && CLOUD) cloudRestore(true);
 </script>
 </body>
 </html>
