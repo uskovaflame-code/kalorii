@@ -1114,13 +1114,20 @@ function openDishIngredients(){
 
 /* ---------- Отчёт ---------- */
 let repN = 7;
-function viewReport(){
-  const s = state.settings, days = [];
+
+/* дни выбранного периода — одни и те же для экрана отчёта и для выгрузки файлом */
+function reportDays(){
+  const out = [];
   for(let i=repN-1;i>=0;i--){
     const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-i);
     const k = keyOf(d), day = state.days[k];
-    days.push({d, k, t: day?totals(day):{k:0,p:0,f:0,c:0}, water: day?(day.water||0):0, has: !!day});
+    out.push({d, k, day, t: day?totals(day):{k:0,p:0,f:0,c:0}, water: day?(day.water||0):0, has: !!day});
   }
+  return out;
+}
+
+function viewReport(){
+  const s = state.settings, days = reportDays();
   const filled = days.filter(x=>x.t.k>0);
   const avg = a => filled.length ? a/filled.length : 0;
   const sum = f => filled.reduce((s2,x)=>s2+f(x),0);
@@ -1177,10 +1184,115 @@ function viewReport(){
     <div class="dsub" style="margin-bottom:6px">За последние ${repN} дней</div>
     ${top.length ? top.map(t=>`<div class="tline"><span>${t[0]}</span><b class="num">${t[1]} раз</b></div>`).join('')
       : '<div class="empty">Пока мало записей — статистика появится через несколько дней.</div>'}
-  </div>`;
+  </div>
+  <button class="btn ghost sm" id="expRep" style="margin-bottom:8px">📄 Отчёт файлом — тренеру</button>`;
 }
 function bindReport(){
   document.querySelectorAll('.chip[data-n]').forEach(b=>b.onclick=()=>{ repN=+b.dataset.n; render(); });
+  document.getElementById('expRep').onclick = openExport;
+}
+
+/* ---------- Отчёт файлом: человеческий текст, а не выгрузка данных ---------- */
+function buildReportText(){
+  const s = state.settings, days = reportDays();
+  const filled = days.filter(x=>x.t.k>0);
+  const avg = f => filled.length ? filled.reduce((a,x)=>a+f(x),0)/filled.length : 0;
+  const wD = days.filter(x=>x.water>0);
+  const avgW = wD.length ? wD.reduce((a,x)=>a+x.water,0)/wD.length : 0;
+  const inNorm = filled.filter(x=>x.t.k<=s.kcal).length;
+  const dl = x => x.d.getDate()+' '+MON[x.d.getMonth()];
+  const cap = t => t.charAt(0).toUpperCase()+t.slice(1);
+  const L = [];
+
+  L.push('ДНЕВНИК ПИТАНИЯ');
+  L.push(dl(days[0])+' — '+dl(days[days.length-1])+' '+days[days.length-1].d.getFullYear()+' г.');
+  L.push('');
+  L.push('Моя норма: '+s.kcal+' ккал, Б '+s.p+' / Ж '+s.f+' / У '+s.c+' г');
+  L.push('');
+
+  if(!filled.length){
+    L.push('За этот период записей нет.');
+    return L.join('\n');
+  }
+
+  L.push('В СРЕДНЕМ ЗА '+repN+' ДНЕЙ');
+  L.push('Калории: '+Math.round(avg(x=>x.t.k))+' ккал');
+  L.push('Белки: '+Math.round(avg(x=>x.t.p))+' г из '+s.p);
+  L.push('Жиры: '+Math.round(avg(x=>x.t.f))+' г из '+s.f);
+  L.push('Углеводы: '+Math.round(avg(x=>x.t.c))+' г из '+s.c);
+  L.push('Вода: '+(avgW*s.glass/1000).toFixed(1)+' л');
+  L.push('В норму уложилась: '+inNorm+' из '+filled.length+' дней с записями');
+  L.push('');
+  L.push('ПО ДНЯМ');
+
+  days.forEach(x=>{
+    if(!x.day || x.t.k<=0) return;
+    L.push('');
+    L.push('--------------------');
+    L.push(cap(WD[x.d.getDay()])+', '+dl(x));
+    L.push('Итого: '+Math.round(x.t.k)+' ккал'+(x.t.k>s.kcal?' (выше нормы)':'')
+      +' | Б '+r1(x.t.p)+' | Ж '+r1(x.t.f)+' | У '+r1(x.t.c)
+      +(x.water?' | вода '+(x.water*s.glass/1000).toFixed(2)+' л':''));
+    x.day.meals.forEach(m=>{
+      if(!m.items.length) return;
+      L.push('');
+      L.push(m.name+' — '+Math.round(mealKcal(m))+' ккал');
+      m.items.forEach(i=>{
+        L.push('  • '+i.n+' — '+i.g+' г, '+Math.round(i.k*i.g/100)+' ккал'
+          +' (Б '+r1(i.p*i.g/100)+' Ж '+r1(i.f*i.g/100)+' У '+r1(i.c*i.g/100)+')');
+      });
+    });
+  });
+
+  const skipped = days.length - filled.length;
+  if(skipped){
+    L.push('');
+    L.push('--------------------');
+    L.push('Дней без записей за период: '+skipped);
+  }
+  return L.join('\n');
+}
+
+function openExport(){
+  const txt = buildReportText();
+  const days = reportDays();
+  const name = 'pitanie-'+days[0].k+'_'+days[days.length-1].k+'.txt';
+
+  sheet(`<div class="shead"><h3>Отчёт файлом</h3><button class="close" data-x>✕</button></div>
+    <div class="dsub" style="margin:-6px 0 12px">Обычный текст за ${repN} дней — что ел, сколько и когда.
+      Такой файл можно переслать тренеру, он откроется на любом телефоне.</div>
+    <textarea class="input" id="rtxt" readonly style="min-height:200px">${txt.replace(/</g,'&lt;')}</textarea>
+    <button class="btn" id="dl">Скачать файлом</button>
+    <button class="btn ghost sm" id="cp" style="margin-top:9px">Скопировать текст</button>
+    <div class="dsub" style="margin-top:12px">Если файл не скачался — так бывает внутри телеграма —
+      нажми «Скопировать текст» и вставь его прямо в чат тренеру.</div>`);
+
+  document.getElementById('dl').onclick = ()=>{
+    try{
+      const blob = new Blob(['﻿'+txt], {type:'text/plain;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 4000);
+      haptic('medium'); toast('Файл сохранён: '+name);
+    }catch(e){ toast('Не вышло — скопируй текст'); }
+  };
+
+  document.getElementById('cp').onclick = ()=>{
+    const ta = document.getElementById('rtxt');
+    const old = ()=>{
+      ta.removeAttribute('readonly'); ta.focus(); ta.select(); ta.setSelectionRange(0, 999999);
+      const ok = document.execCommand('copy');
+      ta.setAttribute('readonly',''); ta.blur();
+      toast(ok ? 'Текст скопирован' : 'Выдели текст и скопируй вручную');
+    };
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(()=>{ haptic('medium'); toast('Текст скопирован'); }, old);
+      } else old();
+    }catch(e){ try{ old(); }catch(x){ toast('Выдели текст и скопируй вручную'); } }
+  };
 }
 
 /* ---------- Настройки ---------- */
@@ -1228,10 +1340,13 @@ function viewSet(){
       <button class="btn ghost sm" id="rsCloud">Восстановить</button>
     </div>` : `<div class="dsub" style="margin-bottom:10px">Копия в облако телеграма появится, если открыть приложение через бота, а не в браузере.</div>`}
     <div class="row2">
-      <button class="btn ghost sm" id="expFile">Скачать файлом</button>
-      <button class="btn ghost sm" id="impFile">Загрузить файл</button>
+      <button class="btn ghost sm" id="expFile">Сохранить копию</button>
+      <button class="btn ghost sm" id="impFile">Вернуть из копии</button>
     </div>
     <input type="file" id="fileIn" accept="application/json" style="display:none">
+    <div class="dsub" style="margin-top:10px">Это служебный файл для переноса на другой телефон — внутри
+      непонятный текст, и это нормально. Отчёт, который можно показать человеку, лежит на вкладке
+      «Отчёт», кнопка внизу.</div>
   </div>
 
   ${(state.hidden&&state.hidden.length)?`<div class="card">
@@ -1277,8 +1392,10 @@ function bindSet(){
     const blob = new Blob([JSON.stringify(state)], {type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'dnevnik-pitaniya-'+keyOf(new Date())+'.json';
-    a.click(); URL.revokeObjectURL(a.href);
+    a.download = 'kopiya-dnevnika-'+keyOf(new Date())+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+    toast('Копия сохранена файлом');
   };
   const fi = document.getElementById('fileIn');
   document.getElementById('impFile').onclick = ()=>fi.click();
