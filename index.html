@@ -1283,9 +1283,11 @@ function openExport(){
     const ta = document.getElementById('rtxt');
     const old = ()=>{
       ta.removeAttribute('readonly'); ta.focus(); ta.select(); ta.setSelectionRange(0, 999999);
-      const ok = document.execCommand('copy');
-      ta.setAttribute('readonly',''); ta.blur();
-      toast(ok ? 'Текст скопирован' : 'Выдели текст и скопируй вручную');
+      let ok = false;
+      try{ ok = document.execCommand('copy'); }catch(e){}
+      ta.setAttribute('readonly','');
+      if(ok){ ta.blur(); toast('Текст скопирован'); }
+      else { toast('Текст выделен — нажми «Копировать»'); }   /* выделение оставляем */
     };
     try{
       if(navigator.clipboard && navigator.clipboard.writeText){
