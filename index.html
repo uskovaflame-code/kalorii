@@ -1148,10 +1148,12 @@ function viewReport(){
   <div class="card">
     <div class="mname" style="margin-bottom:8px">Калории по дням</div>
     <div class="chart">
-      ${days.map(x=>{
+      ${days.map((x,ix)=>{
         const h = Math.round(x.t.k/max*100);
+        /* на 30 днях подписи не помещаются — оставляем каждую пятую */
+        const lab = (days.length<=14 || ix%5===0) ? x.d.getDate() : '';
         return `<div class="col"><div class="track"><div class="colbar ${x.t.k>s.kcal?'over':''} ${x.t.k===0?'zero':''}"
-          style="height:${Math.max(h,2)}%"></div></div><small>${x.d.getDate()}</small></div>`;
+          style="height:${Math.max(h,2)}%"></div></div><small>${lab||'&nbsp;'}</small></div>`;
       }).join('')}
     </div>
     <div class="dsub" style="margin-top:8px">Красным — дни выше нормы (${s.kcal} ккал).</div>
